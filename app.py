@@ -292,7 +292,7 @@ with tab2:
             if chart_type == "Xbar-R":
                 charts = xbar_r_chart(df, sg_col, val_col)
                 fig = plot_variable_control_chart(charts, "Xbar-R", val_col)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="phase1_xbar_r")
                 anomalies1 = detect_anomalies(charts[0])
                 anomalies2 = detect_anomalies(charts[1])
                 anomaly_sgs = sorted(set(anomalies1 + anomalies2))
@@ -300,7 +300,7 @@ with tab2:
             elif chart_type == "Xbar-S":
                 charts = xbar_s_chart(df, sg_col, val_col)
                 fig = plot_variable_control_chart(charts, "Xbar-S", val_col)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="phase1_xbar_s")
                 anomalies1 = detect_anomalies(charts[0])
                 anomalies2 = detect_anomalies(charts[1])
                 anomaly_sgs = sorted(set(anomalies1 + anomalies2))
@@ -308,7 +308,7 @@ with tab2:
             elif chart_type == "I-MR":
                 charts = imr_chart(df, sg_col, val_col)
                 fig = plot_variable_control_chart(charts, "I-MR", val_col)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="phase1_imr")
                 anomalies1 = detect_anomalies(charts[0])
                 anomalies2 = detect_anomalies(charts[1])
                 anomaly_sgs = sorted(set(anomalies1 + anomalies2))
@@ -316,25 +316,25 @@ with tab2:
             elif chart_type == "NP":
                 chart = np_chart(df, sg_col, val_col)
                 fig = _single_control_chart(chart, f"NP Control Chart of {val_col}", "NP")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="phase1_np")
                 anomaly_sgs = detect_anomalies(chart)
 
             elif chart_type == "P":
                 chart = p_chart(df, sg_col, val_col)
                 fig = _single_control_chart(chart, f"P Control Chart of {val_col}", "P")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="phase1_p")
                 anomaly_sgs = detect_anomalies(chart)
 
             elif chart_type == "C":
                 chart = c_chart(df, sg_col, val_col)
                 fig = _single_control_chart(chart, f"C Control Chart of {val_col}", "C")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="phase1_c")
                 anomaly_sgs = detect_anomalies(chart)
 
             else:  # U
                 chart = u_chart(df, sg_col, val_col)
                 fig = _single_control_chart(chart, f"U Control Chart of {val_col}", "U")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="phase1_u")
                 anomaly_sgs = detect_anomalies(chart)
 
             # ── 이상치 요약 ───────────────────────────────────────────────────
@@ -376,7 +376,7 @@ with tab2:
                         else:
                             charts2 = u_chart(df_clean, sg_col, val_col)
                             fig2 = _single_control_chart(charts2, f"U Chart (수정)", "U")
-                        st.plotly_chart(fig2, use_container_width=True)
+                        st.plotly_chart(fig2, use_container_width=True, key="phase2_chart")
                     except Exception as e:
                         st.error(f"2단계 관리도 계산 오류: {e}")
 
