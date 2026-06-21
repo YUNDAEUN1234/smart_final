@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from src.data_io import generate_sample_data, parse_upload
 from src.capability import (
     normality_test, boxcox_transform, process_capability,
-    capability_grade, plot_boxplot, plot_histogram, plot_qq, plot_process_capability,
+    capability_grade, fmt_cap, plot_boxplot, plot_histogram, plot_qq, plot_process_capability,
 )
 from src.control_charts import (
     xbar_r_chart, xbar_s_chart, imr_chart,
@@ -90,9 +90,25 @@ with tab0:
             with col1:
                 sg_col = st.selectbox("부분군 컬럼", cols)
                 val_col = st.selectbox("측정값 컬럼", cols, index=min(1, len(cols)-1))
+
+            val_data = pd.to_numeric(df_raw[val_col], errors="coerce").dropna()
+            if len(val_data) > 1:
+                data_mean = val_data.mean()
+                data_std = val_data.std()
+                suggested_lsl = round(float(data_mean - 3 * data_std), 4)
+                suggested_usl = round(float(data_mean + 3 * data_std), 4)
+            else:
+                suggested_lsl, suggested_usl = 0.0, 1.0
+
             with col2:
-                LSL = st.number_input("LSL (규격 하한)", value=0.0, format="%.4f")
-                USL = st.number_input("USL (규격 상한)", value=1.0, format="%.4f")
+                st.caption(
+                    f"📊 데이터 기반 추천 (μ ± 3σ): "
+                    f"LSL={suggested_lsl:.4f}, USL={suggested_usl:.4f}"
+                )
+                LSL = st.number_input("LSL (규격 하한)", value=suggested_lsl,
+                                      format="%.4f", key=f"lsl_{val_col}")
+                USL = st.number_input("USL (규격 상한)", value=suggested_usl,
+                                      format="%.4f", key=f"usl_{val_col}")
             if st.button("적용", type="primary"):
                 st.session_state.df = df_raw
                 st.session_state.LSL = LSL
@@ -138,6 +154,14 @@ with tab1:
         USL = st.session_state.USL
 
         data_series = df[val_col].dropna()
+
+        data_mean = data_series.mean()
+        if data_mean < LSL or data_mean > USL:
+            st.warning(
+                f"⚠️ 데이터 평균({data_mean:.4f})이 규격 범위 "
+                f"[LSL={LSL}, USL={USL}] 밖에 있습니다. "
+                f"규격 한계를 확인하세요."
+            )
 
         # ── 정규성 검정 ──────────────────────────────────────────────────────
         st.subheader("1. 정규성 검정")
@@ -209,7 +233,7 @@ with tab1:
         ]:
             val = cap[key]
             grade, color = capability_grade(val)
-            c.metric(label, f"{val:.4f}")
+            c.metric(label, fmt_cap(val))
             c.markdown(f"<span style='color:{color};font-weight:bold'>{grade}</span>", unsafe_allow_html=True)
 
         st.caption("판정: Cp/Cpk ≥ 1.67 매우 우수 | ≥ 1.33 우수 | ≥ 1.0 보통 | < 1.0 미흡")
@@ -387,7 +411,7 @@ with tab3:
             for c, key in [(col2, "Cp"), (col3, "Cpk"), (col4, "Pp"), (col5, "Ppk")]:
                 val = cap[key]
                 grade, _ = capability_grade(val)
-                c.metric(key, f"{val:.4f}", delta=grade)
+                c.metric(key, fmt_cap(val), delta=grade)
         except Exception as e:
             st.error(f"공정능력 계산 오류: {e}")
 
@@ -451,7 +475,7 @@ with tab3:
 
             col1, col2 = st.columns(2)
             col1.markdown(
-                f"**공정능력 (Cpk={cpk:.4f}):** "
+                f"**공정능력 (Cpk={fmt_cap(cpk)}):** "
                 f"<span style='color:{color};font-size:18px;font-weight:bold'>{grade}</span>",
                 unsafe_allow_html=True,
             )

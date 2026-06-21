@@ -42,11 +42,9 @@ def process_capability(
     x_bar = mean_sg.mean()
     sigma_hat = std_sg.mean()
 
-    # within-subgroup sigma via c4 unbiasing
     n_mode = int(n_sg.mode().iloc[0]) if len(n_sg) > 0 else 2
 
     if n_mode < 2:
-        # 부분군 크기 1 → I-MR 방식: 이동범위(MR) 기반 sigma 추정
         sorted_means = mean_sg.sort_index().values
         if len(sorted_means) >= 2:
             mr = np.abs(np.diff(sorted_means))
@@ -60,13 +58,11 @@ def process_capability(
         c4 = calc_unbiased_const("c4", n_mode)
         sigma_within = sigma_hat / c4 if c4 and not np.isnan(c4) else sigma_hat
 
-    # overall sigma
     sigma_overall_raw = df[val_col].std(ddof=1)
     n_total = max(len(df), 2)
     c4_overall = calc_unbiased_const("c4", n_total)
     sigma_overall = sigma_overall_raw / c4_overall if c4_overall and not np.isnan(c4_overall) else sigma_overall_raw
 
-    # sigma=0 → 공정능력 무한대 방지
     _nan = float("nan")
     if sigma_within == 0 or np.isnan(sigma_within):
         Cp, Cpk = _nan, _nan
@@ -103,38 +99,127 @@ def capability_grade(val: float) -> tuple[str, str]:
         return "미흡 (개선 필요)", "#d62728"
 
 
-def plot_boxplot(df: pd.DataFrame, sg_col: str, val_col: str, LSL: float, USL: float) -> go.Figure:
-    fig = px.box(
-        df, x=sg_col, y=val_col,
-        color=sg_col,
-        title=f"{val_col.capitalize()} Boxplot by Subgroup",
-        points="all",
-    )
-    fig.add_hline(y=LSL, line_dash="dash", line_color="red", annotation_text="LSL")
-    fig.add_hline(y=USL, line_dash="dash", line_color="red", annotation_text="USL")
+def fmt_cap(val: float) -> str:
+    if np.isnan(val) or np.isinf(val):
+        return "N/A"
+    if abs(val) > 99.99:
+        return "> 99"
+    return f"{val:.4f}"
+
+
+def _auto_nbins(n: int) -> int:
+    return max(10, min(50, int(np.ceil(np.log2(n) + 1))))
+
+
+def _smart_range(data_values, LSL, USL):
+    """Axis range focused on data. Include spec limits only when close."""
+    dmin, dmax = float(data_values.min()), float(data_values.max())
+    spread = dmax - dmin
+    if spread < 1e-10:
+        spread = abs(dmin) * 0.1 or 1.0
+
+    pad = spread * 0.3
+    lo, hi = dmin - pad, dmax + pad
+
+    lsl_dist = min(abs(dmin - LSL), abs(dmax - LSL))
+    usl_dist = min(abs(dmin - USL), abs(dmax - USL))
+    threshold = spread * 3
+
+    lsl_in = lsl_dist < threshold
+    usl_in = usl_dist < threshold
+
+    if lsl_in:
+        lo = min(lo, LSL - pad)
+        hi = max(hi, LSL + pad)
+    if usl_in:
+        hi = max(hi, USL + pad)
+        lo = min(lo, USL - pad)
+
+    return lo, hi, lsl_in, usl_in
+
+
+def _add_spec_lines_y(fig, LSL, USL, lo, hi, lsl_in, usl_in):
+    if lsl_in:
+        fig.add_hline(y=LSL, line_dash="dash", line_color="red",
+                      annotation_text="LSL")
+    else:
+        arrow = "↓" if LSL < lo else "↑"
+        y_pos = 0.02 if LSL < lo else 0.98
+        fig.add_annotation(
+            x=1.02, y=y_pos, xref="paper", yref="paper",
+            text=f"{arrow} LSL={LSL}", showarrow=False,
+            font=dict(color="red", size=11), xanchor="left",
+        )
+    if usl_in:
+        fig.add_hline(y=USL, line_dash="dash", line_color="red",
+                      annotation_text="USL")
+    else:
+        arrow = "↓" if USL < lo else "↑"
+        y_pos = 0.06 if USL < lo else 0.94
+        fig.add_annotation(
+            x=1.02, y=y_pos, xref="paper", yref="paper",
+            text=f"{arrow} USL={USL}", showarrow=False,
+            font=dict(color="red", size=11), xanchor="left",
+        )
+
+
+def _add_spec_lines_x(fig, LSL, USL, lo, hi, lsl_in, usl_in):
+    if lsl_in:
+        fig.add_vline(x=LSL, line_dash="dash", line_color="red",
+                      annotation_text="LSL")
+    else:
+        arrow = "←" if LSL < lo else "→"
+        x_pos = 0.02 if LSL < lo else 0.98
+        fig.add_annotation(
+            x=x_pos, y=1.02, xref="paper", yref="paper",
+            text=f"{arrow} LSL={LSL}", showarrow=False,
+            font=dict(color="red", size=11), yanchor="bottom",
+        )
+    if usl_in:
+        fig.add_vline(x=USL, line_dash="dash", line_color="red",
+                      annotation_text="USL")
+    else:
+        arrow = "←" if USL < lo else "→"
+        x_pos = 0.15 if USL < lo else 0.85
+        fig.add_annotation(
+            x=x_pos, y=1.02, xref="paper", yref="paper",
+            text=f"{arrow} USL={USL}", showarrow=False,
+            font=dict(color="red", size=11), yanchor="bottom",
+        )
+
+
+def plot_boxplot(df: pd.DataFrame, sg_col: str, val_col: str,
+                 LSL: float, USL: float) -> go.Figure:
+    fig = px.box(df, x=sg_col, y=val_col,
+                 title=f"{val_col.capitalize()} Boxplot by Subgroup",
+                 points="all")
+    data_vals = df[val_col].dropna()
+    lo, hi, lsl_in, usl_in = _smart_range(data_vals, LSL, USL)
+    _add_spec_lines_y(fig, LSL, USL, lo, hi, lsl_in, usl_in)
+    fig.update_yaxes(range=[lo, hi])
     fig.update_layout(width=800, height=400, showlegend=False)
     return fig
 
 
-def plot_histogram(df: pd.DataFrame, sg_col: str, val_col: str, LSL: float, USL: float) -> go.Figure:
+def plot_histogram(df: pd.DataFrame, sg_col: str, val_col: str,
+                   LSL: float, USL: float) -> go.Figure:
+    data_vals = df[val_col].dropna()
+    lo, hi, lsl_in, usl_in = _smart_range(data_vals, LSL, USL)
+
+    n_bins = _auto_nbins(len(data_vals))
     n_sg = df[sg_col].nunique()
     if n_sg <= 8:
-        fig = px.histogram(
-            df, x=val_col, color=sg_col,
-            facet_row=sg_col,
-            title=f"{val_col.capitalize()} Histogram",
-            nbins=20, opacity=0.7,
-        )
-        fig.update_layout(width=800, height=max(500, n_sg * 120))
+        fig = px.histogram(df, x=val_col, color=sg_col,
+                           title=f"{val_col.capitalize()} Histogram",
+                           nbins=n_bins, opacity=0.7, barmode="overlay")
     else:
-        fig = px.histogram(
-            df, x=val_col, color=sg_col,
-            title=f"{val_col.capitalize()} Histogram",
-            nbins=20, opacity=0.5, barmode="overlay",
-        )
-        fig.update_layout(width=800, height=500)
-    fig.add_vline(x=LSL, line_dash="dash", line_color="red", annotation_text="LSL")
-    fig.add_vline(x=USL, line_dash="dash", line_color="red", annotation_text="USL")
+        fig = px.histogram(df, x=val_col,
+                           title=f"{val_col.capitalize()} Histogram",
+                           nbins=n_bins, opacity=0.7)
+
+    _add_spec_lines_x(fig, LSL, USL, lo, hi, lsl_in, usl_in)
+    fig.update_xaxes(range=[lo, hi])
+    fig.update_layout(width=800, height=400)
     return fig
 
 
@@ -142,7 +227,8 @@ def plot_qq(data: pd.Series, title: str = "Q-Q Plot") -> go.Figure:
     arr = data.dropna().values
     if len(arr) < 3 or np.std(arr) == 0:
         fig = go.Figure()
-        fig.update_layout(title=title + " (데이터 부족 또는 분산=0)", width=400, height=400)
+        fig.update_layout(title=title + " (데이터 부족 또는 분산=0)",
+                          width=400, height=400)
         return fig
     z = stats.zscore(arr)
     (x, y), _ = stats.probplot(z, dist="norm")
@@ -159,41 +245,41 @@ def plot_qq(data: pd.Series, title: str = "Q-Q Plot") -> go.Figure:
 
 
 def plot_process_capability(
-    df: pd.DataFrame, sg_col: str, val_col: str, LSL: float, USL: float, cap: dict
+    df: pd.DataFrame, sg_col: str, val_col: str,
+    LSL: float, USL: float, cap: dict,
 ) -> go.Figure:
     col_data = df[val_col].dropna()
-    x_norm = np.linspace(min(col_data.min(), LSL) - 1,
-                         max(col_data.max(), USL) + 1, 1000)
+    lo, hi, lsl_in, usl_in = _smart_range(col_data, LSL, USL)
+
     sw = cap["sigma_within"]
     if np.isnan(sw) or sw == 0:
         sw = col_data.std(ddof=1) or 1.0
-    y_norm = stats.norm.pdf(x_norm, loc=cap["x_bar"], scale=sw)
+    x_curve = np.linspace(lo, hi, 500)
+    y_curve = stats.norm.pdf(x_curve, loc=cap["x_bar"], scale=sw)
 
-    fig = make_subplots(
-        rows=2, cols=1,
-        row_heights=[0.3, 0.7],
-        shared_xaxes=True,
-        subplot_titles=["Subgroup Boxplots", f"{val_col.capitalize()} Process Capability"],
-    )
+    fig = go.Figure()
 
-    sgs = df[sg_col].unique()
-    colors = px.colors.qualitative.Plotly
-    for i, sg in enumerate(sgs):
-        d = df[df[sg_col] == sg][val_col]
-        fig.add_trace(go.Box(x=d, name=str(sg), marker_color=colors[i % len(colors)],
-                             orientation="h", showlegend=True), row=1, col=1)
+    n_bins = _auto_nbins(len(col_data))
+    fig.add_trace(go.Histogram(x=col_data, nbinsx=n_bins, opacity=0.7,
+                               marker_color="#1f77b4", name="Data"))
 
-    for i, sg in enumerate(sgs):
-        d = df[df[sg_col] == sg][val_col]
-        fig.add_trace(go.Histogram(x=d, name=str(sg), marker_color=colors[i % len(colors)],
-                                   opacity=0.5, nbinsx=20, showlegend=False), row=2, col=1)
+    bin_width = (col_data.max() - col_data.min()) / n_bins
+    if bin_width > 0:
+        y_scaled = y_curve * len(col_data) * bin_width
+        fig.add_trace(go.Scatter(x=x_curve, y=y_scaled, mode="lines",
+                                 line=dict(color="darkblue", width=2),
+                                 name="Normal fit"))
 
-    fig.add_vline(x=LSL, line_dash="dash", line_color="red", annotation_text="LSL")
-    fig.add_vline(x=USL, line_dash="dash", line_color="red", annotation_text="USL")
+    _add_spec_lines_x(fig, LSL, USL, lo, hi, lsl_in, usl_in)
+
+    fig.add_vline(x=cap["x_bar"], line_dash="dot", line_color="green",
+                  annotation_text=f"x̄={cap['x_bar']:.4f}")
+
+    fig.update_xaxes(range=[lo, hi])
 
     annotation_text = (
-        f"Cp={cap['Cp']:.4f}<br>Cpk={cap['Cpk']:.4f}<br>"
-        f"Pp={cap['Pp']:.4f}<br>Ppk={cap['Ppk']:.4f}"
+        f"Cp={fmt_cap(cap['Cp'])}<br>Cpk={fmt_cap(cap['Cpk'])}<br>"
+        f"Pp={fmt_cap(cap['Pp'])}<br>Ppk={fmt_cap(cap['Ppk'])}"
     )
     fig.add_annotation(
         xref="paper", yref="paper", x=0.98, y=0.05,
@@ -202,8 +288,10 @@ def plot_process_capability(
         font=dict(size=11),
     )
     fig.update_layout(
-        width=800, height=500,
+        width=800, height=450,
         title=f"{val_col.capitalize()} Process Capability Analysis",
         barmode="overlay",
+        xaxis_title=val_col,
+        yaxis_title="Count",
     )
     return fig
