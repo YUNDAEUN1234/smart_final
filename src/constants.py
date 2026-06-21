@@ -30,7 +30,10 @@ def _load_spc():
 def _c4_approx(n: int) -> float:
     if n <= 1:
         return float("nan")
-    return np.sqrt(2 / (n - 1)) * (gamma(n / 2) / gamma((n - 1) / 2))
+    if n > 350:
+        return 4 * (n - 1) / (4 * n - 3)
+    from scipy.special import gammaln
+    return np.sqrt(2 / (n - 1)) * np.exp(gammaln(n / 2) - gammaln((n - 1) / 2))
 
 
 def get_cap_const(name: str, n: int) -> float:
