@@ -11,6 +11,10 @@ def _get(name: str, m: int) -> float:
     return get_spc_const(name, m)
 
 
+def _safe_lower(val: float) -> float:
+    return max(0.0, val) if not np.isnan(val) else 0.0
+
+
 # ── Variable (measurement) charts ─────────────────────────────────────────────
 
 def xbar_r_chart(df: pd.DataFrame, sg_col: str, val_col: str) -> tuple[dict, dict]:
@@ -18,7 +22,8 @@ def xbar_r_chart(df: pd.DataFrame, sg_col: str, val_col: str) -> tuple[dict, dic
     means = sg.mean()
     ranges = sg.max() - sg.min()
     n = sg.count()
-    m = int(n.mode().iloc[0])
+    mode_vals = n.mode()
+    m = int(mode_vals.iloc[0]) if len(mode_vals) > 0 else 2
 
     x_bar = means.mean()
     R_bar = ranges.mean()
@@ -33,7 +38,7 @@ def xbar_r_chart(df: pd.DataFrame, sg_col: str, val_col: str) -> tuple[dict, dic
     })
     r_chart = pd.DataFrame({
         "point": ranges, "CL": R_bar,
-        "LCL": max(0.0, D3 * R_bar),
+        "LCL": _safe_lower(D3 * R_bar),
         "UCL": D4 * R_bar,
     })
     return xbar_chart.to_dict("list"), r_chart.to_dict("list")
@@ -44,7 +49,8 @@ def xbar_s_chart(df: pd.DataFrame, sg_col: str, val_col: str) -> tuple[dict, dic
     means = sg.mean()
     stds = sg.std(ddof=1)
     n = sg.count()
-    m = int(n.mode().iloc[0])
+    mode_vals = n.mode()
+    m = int(mode_vals.iloc[0]) if len(mode_vals) > 0 else 2
 
     x_bar = means.mean()
     s_bar = stds.mean()
@@ -59,7 +65,7 @@ def xbar_s_chart(df: pd.DataFrame, sg_col: str, val_col: str) -> tuple[dict, dic
     })
     s_chart = pd.DataFrame({
         "point": stds, "CL": s_bar,
-        "LCL": max(0.0, B3 * s_bar),
+        "LCL": _safe_lower(B3 * s_bar),
         "UCL": B4 * s_bar,
     })
     return xbar_chart.to_dict("list"), s_chart.to_dict("list")
@@ -73,7 +79,7 @@ def imr_chart(df: pd.DataFrame, sg_col: str, val_col: str, window: int = 2) -> t
     D3 = _get("D3", window)
     D4 = _get("D4", window)
     d2 = _get("d2", window)
-    d2 = d2 if d2 else 1.128
+    d2 = d2 if d2 and not np.isnan(d2) else 1.128
 
     i_chart = pd.DataFrame({
         "point": data, "CL": x_bar,
@@ -82,7 +88,7 @@ def imr_chart(df: pd.DataFrame, sg_col: str, val_col: str, window: int = 2) -> t
     })
     mr_chart = pd.DataFrame({
         "point": MR, "CL": MR_bar,
-        "LCL": max(0.0, D3 * MR_bar),
+        "LCL": _safe_lower(D3 * MR_bar),
         "UCL": D4 * MR_bar,
     })
     return i_chart.to_dict("list"), mr_chart.to_dict("list")
@@ -96,11 +102,12 @@ def np_chart(df: pd.DataFrame, sg_col: str, val_col: str) -> dict:
     np_i = sg[val_col].sum()
     np_bar = np_i.sum() / len(n_i)
     p_bar = np_i.sum() / n_i.sum()
-    n_mode = int(n_i.mode().iloc[0])
+    mode_vals = n_i.mode()
+    n_mode = int(mode_vals.iloc[0]) if len(mode_vals) > 0 else 2
 
     chart = pd.DataFrame({
         "point": np_i, "CL": np_bar,
-        "LCL": max(0.0, np_bar - 3 * np.sqrt(np_bar * (1 - p_bar))),
+        "LCL": _safe_lower(np_bar - 3 * np.sqrt(np_bar * (1 - p_bar))),
         "UCL": np_bar + 3 * np.sqrt(np_bar * (1 - p_bar)),
     })
     return chart.to_dict("list")
@@ -128,7 +135,7 @@ def c_chart(df: pd.DataFrame, sg_col: str, val_col: str) -> dict:
 
     chart = pd.DataFrame({
         "point": c_i, "CL": c_bar,
-        "LCL": max(0.0, c_bar - 3 * np.sqrt(c_bar)),
+        "LCL": _safe_lower(c_bar - 3 * np.sqrt(c_bar)),
         "UCL": c_bar + 3 * np.sqrt(c_bar),
     })
     return chart.to_dict("list")

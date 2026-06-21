@@ -9,15 +9,22 @@ from src.constants import get_cap_const
 
 
 def normality_test(data: pd.Series) -> tuple[float, float, bool]:
-    stat, p = shapiro(data.dropna())
+    arr = data.dropna()
+    if len(arr) < 3:
+        return 0.0, 0.0, False
+    stat, p = shapiro(arr)
     return stat, p, p >= 0.05
 
 
-def boxcox_transform(data: pd.Series) -> tuple[np.ndarray, float, float, float]:
+def boxcox_transform(data: pd.Series) -> tuple[np.ndarray, float, float, float, float]:
     arr = data.dropna().values
+    shift = 0.0
+    if arr.min() <= 0:
+        shift = abs(arr.min()) + 1e-6
+        arr = arr + shift
     transformed, lam = boxcox(arr)
     stat, p = shapiro(transformed)
-    return transformed, lam, stat, p
+    return transformed, lam, stat, p, shift
 
 
 def calc_unbiased_const(name: str, n: int) -> float:
@@ -124,6 +131,10 @@ def plot_histogram(df: pd.DataFrame, sg_col: str, val_col: str, LSL: float, USL:
 
 def plot_qq(data: pd.Series, title: str = "Q-Q Plot") -> go.Figure:
     arr = data.dropna().values
+    if len(arr) < 3 or np.std(arr) == 0:
+        fig = go.Figure()
+        fig.update_layout(title=title + " (데이터 부족 또는 분산=0)", width=400, height=400)
+        return fig
     z = stats.zscore(arr)
     (x, y), _ = stats.probplot(z, dist="norm")
     fig = go.Figure()
@@ -141,9 +152,13 @@ def plot_qq(data: pd.Series, title: str = "Q-Q Plot") -> go.Figure:
 def plot_process_capability(
     df: pd.DataFrame, sg_col: str, val_col: str, LSL: float, USL: float, cap: dict
 ) -> go.Figure:
-    x_norm = np.linspace(min(df[val_col].min(), LSL) - 1,
-                         max(df[val_col].max(), USL) + 1, 1000)
-    y_norm = stats.norm.pdf(x_norm, loc=cap["x_bar"], scale=cap["sigma_within"])
+    col_data = df[val_col].dropna()
+    x_norm = np.linspace(min(col_data.min(), LSL) - 1,
+                         max(col_data.max(), USL) + 1, 1000)
+    sw = cap["sigma_within"]
+    if np.isnan(sw) or sw == 0:
+        sw = col_data.std(ddof=1) or 1.0
+    y_norm = stats.norm.pdf(x_norm, loc=cap["x_bar"], scale=sw)
 
     fig = make_subplots(
         rows=2, cols=1,

@@ -159,7 +159,7 @@ with tab1:
             st.warning("정규성 불만족 → Box-Cox 변환을 적용할 수 있습니다.")
             use_transform = st.checkbox("Box-Cox 변환 적용", value=True)
             if use_transform:
-                transformed, lam, stat_t, p_t = boxcox_transform(data_series)
+                transformed, lam, stat_t, p_t, bc_shift = boxcox_transform(data_series)
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("최적 λ (lambda)", f"{lam:.4f}")
@@ -172,10 +172,19 @@ with tab1:
                 df_analysis[val_col] = np.nan
                 mask = df[val_col].notna()
                 df_analysis.loc[mask, val_col] = transformed
-                # 변환 스케일 규격
-                if lam != 0:
-                    LSL_analysis = (LSL * lam + 1) ** (1/lam) if False else LSL_analysis
-                st.info("※ Box-Cox 변환 후 규격 한계(LSL/USL)는 동일 스케일 유지 (근사)")
+                # Box-Cox 변환된 데이터와 동일 스케일로 규격 변환 (shift 포함)
+                lsl_shifted = LSL + bc_shift
+                usl_shifted = USL + bc_shift
+                if lsl_shifted > 0 and usl_shifted > 0:
+                    if lam != 0:
+                        LSL_analysis = (lsl_shifted ** lam - 1) / lam
+                        USL_analysis = (usl_shifted ** lam - 1) / lam
+                    else:
+                        LSL_analysis = np.log(lsl_shifted)
+                        USL_analysis = np.log(usl_shifted)
+                    st.info(f"※ Box-Cox 변환 후 규격: LSL={LSL_analysis:.4f}, USL={USL_analysis:.4f}")
+                else:
+                    st.warning("규격 한계를 Box-Cox 스케일로 변환할 수 없습니다 (음수 발생). 원본 규격 사용.")
 
         # ── 분포 시각화 ───────────────────────────────────────────────────────
         st.subheader("2. 분포 시각화")
@@ -241,7 +250,8 @@ with tab2:
         with col1:
             data_type = st.selectbox("데이터 유형", ["계량형 (연속)", "계수형 (불량품)", "계수형 (결점수)"])
         with col2:
-            avg_sg_size = int(df.groupby(sg_col).size().mean())
+            _sg_mean = df.groupby(sg_col).size().mean()
+            avg_sg_size = int(_sg_mean) if not pd.isna(_sg_mean) else 1
             rec = recommend_chart(avg_sg_size, data_type)
             st.info(f"**추천 관리도:** {rec} (평균 부분군 크기: {avg_sg_size})")
 
@@ -395,7 +405,8 @@ with tab3:
         with col_right:
             st.markdown("**Xbar-R 관리도**")
             try:
-                avg_n = int(df.groupby(sg_col).size().mean())
+                _sg_mean_dash = df.groupby(sg_col).size().mean()
+                avg_n = int(_sg_mean_dash) if not pd.isna(_sg_mean_dash) else 1
                 if avg_n == 1:
                     charts = imr_chart(df, sg_col, val_col)
                     fig_spc = plot_variable_control_chart(charts, "I-MR", val_col)
@@ -418,19 +429,21 @@ with tab3:
             grade, color = capability_grade(cpk)
 
             # 관리 상태 (Xbar 기준)
-            if avg_n >= 1:
-                try:
-                    if avg_n == 1:
-                        c1, c2 = imr_chart(df, sg_col, val_col)
-                    elif avg_n < 10:
-                        c1, c2 = xbar_r_chart(df, sg_col, val_col)
-                    else:
-                        c1, c2 = xbar_s_chart(df, sg_col, val_col)
-                    anom = detect_anomalies(c1)
-                    spc_status = "관리 이탈" if anom else "관리 상태"
-                    spc_color = "red" if anom else "green"
-                except:
-                    spc_status, spc_color = "계산 불가", "gray"
+            _sg_mean_judge = df.groupby(sg_col).size().mean()
+            avg_n_judge = int(_sg_mean_judge) if not pd.isna(_sg_mean_judge) else 1
+            spc_status, spc_color = "계산 불가", "gray"
+            try:
+                if avg_n_judge == 1:
+                    c1, c2 = imr_chart(df, sg_col, val_col)
+                elif avg_n_judge < 10:
+                    c1, c2 = xbar_r_chart(df, sg_col, val_col)
+                else:
+                    c1, c2 = xbar_s_chart(df, sg_col, val_col)
+                anom = detect_anomalies(c1)
+                spc_status = "관리 이탈" if anom else "관리 상태"
+                spc_color = "red" if anom else "green"
+            except Exception:
+                pass
 
             col1, col2 = st.columns(2)
             col1.markdown(
