@@ -325,32 +325,36 @@ with tab2:
             if anomaly_sgs:
                 st.subheader("2단계: 이상 부분군 제거 후 관리도")
                 df_clean = remove_anomalies(df, sg_col, anomaly_sgs)
-                st.caption(f"제거 후 {df[sg_col].nunique()} → {df_clean[sg_col].nunique()} 부분군")
-                try:
-                    if chart_type == "Xbar-R":
-                        charts2 = xbar_r_chart(df_clean, sg_col, val_col)
-                        fig2 = plot_variable_control_chart(charts2, "Xbar-R", val_col)
-                    elif chart_type == "Xbar-S":
-                        charts2 = xbar_s_chart(df_clean, sg_col, val_col)
-                        fig2 = plot_variable_control_chart(charts2, "Xbar-S", val_col)
-                    elif chart_type == "I-MR":
-                        charts2 = imr_chart(df_clean, sg_col, val_col)
-                        fig2 = plot_variable_control_chart(charts2, "I-MR", val_col)
-                    elif chart_type == "NP":
-                        charts2 = np_chart(df_clean, sg_col, val_col)
-                        fig2 = _single_control_chart(charts2, f"NP Chart (수정)", "NP")
-                    elif chart_type == "P":
-                        charts2 = p_chart(df_clean, sg_col, val_col)
-                        fig2 = _single_control_chart(charts2, f"P Chart (수정)", "P")
-                    elif chart_type == "C":
-                        charts2 = c_chart(df_clean, sg_col, val_col)
-                        fig2 = _single_control_chart(charts2, f"C Chart (수정)", "C")
-                    else:
-                        charts2 = u_chart(df_clean, sg_col, val_col)
-                        fig2 = _single_control_chart(charts2, f"U Chart (수정)", "U")
-                    st.plotly_chart(fig2, use_container_width=True)
-                except Exception as e:
-                    st.error(f"2단계 관리도 계산 오류: {e}")
+                n_clean = df_clean[sg_col].nunique()
+                st.caption(f"제거 후 {df[sg_col].nunique()} → {n_clean} 부분군")
+                if n_clean < 2:
+                    st.error("이상 부분군 제거 후 남은 부분군이 2개 미만이어서 관리도를 계산할 수 없습니다.")
+                else:
+                    try:
+                        if chart_type == "Xbar-R":
+                            charts2 = xbar_r_chart(df_clean, sg_col, val_col)
+                            fig2 = plot_variable_control_chart(charts2, "Xbar-R", val_col)
+                        elif chart_type == "Xbar-S":
+                            charts2 = xbar_s_chart(df_clean, sg_col, val_col)
+                            fig2 = plot_variable_control_chart(charts2, "Xbar-S", val_col)
+                        elif chart_type == "I-MR":
+                            charts2 = imr_chart(df_clean, sg_col, val_col)
+                            fig2 = plot_variable_control_chart(charts2, "I-MR", val_col)
+                        elif chart_type == "NP":
+                            charts2 = np_chart(df_clean, sg_col, val_col)
+                            fig2 = _single_control_chart(charts2, f"NP Chart (수정)", "NP")
+                        elif chart_type == "P":
+                            charts2 = p_chart(df_clean, sg_col, val_col)
+                            fig2 = _single_control_chart(charts2, f"P Chart (수정)", "P")
+                        elif chart_type == "C":
+                            charts2 = c_chart(df_clean, sg_col, val_col)
+                            fig2 = _single_control_chart(charts2, f"C Chart (수정)", "C")
+                        else:
+                            charts2 = u_chart(df_clean, sg_col, val_col)
+                            fig2 = _single_control_chart(charts2, f"U Chart (수정)", "U")
+                        st.plotly_chart(fig2, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"2단계 관리도 계산 오류: {e}")
 
         except Exception as e:
             st.error(f"관리도 계산 오류: {e}")

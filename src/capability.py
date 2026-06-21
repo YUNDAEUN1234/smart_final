@@ -117,15 +117,24 @@ def plot_boxplot(df: pd.DataFrame, sg_col: str, val_col: str, LSL: float, USL: f
 
 
 def plot_histogram(df: pd.DataFrame, sg_col: str, val_col: str, LSL: float, USL: float) -> go.Figure:
-    fig = px.histogram(
-        df, x=val_col, color=sg_col,
-        facet_row=sg_col,
-        title=f"{val_col.capitalize()} Histogram",
-        nbins=20, opacity=0.7,
-    )
+    n_sg = df[sg_col].nunique()
+    if n_sg <= 8:
+        fig = px.histogram(
+            df, x=val_col, color=sg_col,
+            facet_row=sg_col,
+            title=f"{val_col.capitalize()} Histogram",
+            nbins=20, opacity=0.7,
+        )
+        fig.update_layout(width=800, height=max(500, n_sg * 120))
+    else:
+        fig = px.histogram(
+            df, x=val_col, color=sg_col,
+            title=f"{val_col.capitalize()} Histogram",
+            nbins=20, opacity=0.5, barmode="overlay",
+        )
+        fig.update_layout(width=800, height=500)
     fig.add_vline(x=LSL, line_dash="dash", line_color="red", annotation_text="LSL")
     fig.add_vline(x=USL, line_dash="dash", line_color="red", annotation_text="USL")
-    fig.update_layout(width=800, height=500)
     return fig
 
 
