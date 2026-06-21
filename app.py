@@ -91,8 +91,8 @@ with tab0:
                 sg_col = st.selectbox("부분군 컬럼", cols)
                 val_col = st.selectbox("측정값 컬럼", cols, index=min(1, len(cols)-1))
             with col2:
-                LSL = st.number_input("LSL (규격 하한)", format="%.4f")
-                USL = st.number_input("USL (규격 상한)", format="%.4f")
+                LSL = st.number_input("LSL (규격 하한)", value=0.0, format="%.4f")
+                USL = st.number_input("USL (규격 상한)", value=1.0, format="%.4f")
             if st.button("적용", type="primary"):
                 st.session_state.df = df_raw
                 st.session_state.LSL = LSL
@@ -187,6 +187,8 @@ with tab1:
 
         # ── 공정능력지수 계산 ─────────────────────────────────────────────────
         st.subheader("3. 공정능력지수 (Cp / Cpk / Pp / Ppk)")
+        if LSL >= USL:
+            st.error("⚠️ LSL이 USL보다 크거나 같습니다. 규격 한계를 확인하세요.")
         cap = process_capability(df_analysis, sg_col, val_col, LSL_analysis, USL_analysis)
 
         col1, col2, col3, col4 = st.columns(4)
@@ -362,6 +364,8 @@ with tab3:
 
         # ── KPI 카드 ──────────────────────────────────────────────────────────
         try:
+            if LSL >= USL:
+                st.error("⚠️ LSL ≥ USL — 규격 한계를 확인하세요.")
             cap = process_capability(df, sg_col, val_col, LSL, USL)
             st.subheader("공정능력 KPI")
             col1, col2, col3, col4, col5 = st.columns(5)
@@ -384,7 +388,7 @@ with tab3:
             try:
                 cap = process_capability(df, sg_col, val_col, LSL, USL)
                 fig_cap = plot_process_capability(df, sg_col, val_col, LSL, USL, cap)
-                st.plotly_chart(fig_cap, use_container_width=True)
+                st.plotly_chart(fig_cap, use_container_width=True, key="dash_cap")
             except Exception as e:
                 st.error(str(e))
 
@@ -401,7 +405,7 @@ with tab3:
                 else:
                     charts = xbar_s_chart(df, sg_col, val_col)
                     fig_spc = plot_variable_control_chart(charts, "Xbar-S", val_col)
-                st.plotly_chart(fig_spc, use_container_width=True)
+                st.plotly_chart(fig_spc, use_container_width=True, key="dash_spc")
             except Exception as e:
                 st.error(str(e))
 

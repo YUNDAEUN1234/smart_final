@@ -28,6 +28,8 @@ def _load_spc():
 
 
 def _c4_approx(n: int) -> float:
+    if n <= 1:
+        return float("nan")
     return np.sqrt(2 / (n - 1)) * (gamma(n / 2) / gamma((n - 1) / 2))
 
 

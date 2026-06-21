@@ -36,19 +36,42 @@ def process_capability(
     sigma_hat = std_sg.mean()
 
     # within-subgroup sigma via c4 unbiasing
-    n_mode = int(n_sg.mode().iloc[0]) if len(n_sg) > 0 else 1
-    c4 = calc_unbiased_const("c4", n_mode)
-    sigma_within = sigma_hat / c4 if c4 else sigma_hat
+    n_mode = int(n_sg.mode().iloc[0]) if len(n_sg) > 0 else 2
+
+    if n_mode < 2:
+        # 부분군 크기 1 → I-MR 방식: 이동범위(MR) 기반 sigma 추정
+        sorted_means = mean_sg.sort_index().values
+        if len(sorted_means) >= 2:
+            mr = np.abs(np.diff(sorted_means))
+            mr_bar = mr.mean()
+            d2 = calc_unbiased_const("d2", 2)
+            d2 = d2 if d2 and not np.isnan(d2) else 1.128
+            sigma_within = mr_bar / d2
+        else:
+            sigma_within = float("nan")
+    else:
+        c4 = calc_unbiased_const("c4", n_mode)
+        sigma_within = sigma_hat / c4 if c4 and not np.isnan(c4) else sigma_hat
 
     # overall sigma
     sigma_overall_raw = df[val_col].std(ddof=1)
-    c4_overall = calc_unbiased_const("c4", len(df))
-    sigma_overall = sigma_overall_raw / c4_overall if c4_overall else sigma_overall_raw
+    n_total = max(len(df), 2)
+    c4_overall = calc_unbiased_const("c4", n_total)
+    sigma_overall = sigma_overall_raw / c4_overall if c4_overall and not np.isnan(c4_overall) else sigma_overall_raw
 
-    Cp = (USL - LSL) / (6 * sigma_within)
-    Cpk = min((USL - x_bar) / (3 * sigma_within), (x_bar - LSL) / (3 * sigma_within))
-    Pp = (USL - LSL) / (6 * sigma_overall)
-    Ppk = min((USL - x_bar) / (3 * sigma_overall), (x_bar - LSL) / (3 * sigma_overall))
+    # sigma=0 → 공정능력 무한대 방지
+    _nan = float("nan")
+    if sigma_within == 0 or np.isnan(sigma_within):
+        Cp, Cpk = _nan, _nan
+    else:
+        Cp = (USL - LSL) / (6 * sigma_within)
+        Cpk = min((USL - x_bar) / (3 * sigma_within), (x_bar - LSL) / (3 * sigma_within))
+
+    if sigma_overall == 0 or np.isnan(sigma_overall):
+        Pp, Ppk = _nan, _nan
+    else:
+        Pp = (USL - LSL) / (6 * sigma_overall)
+        Ppk = min((USL - x_bar) / (3 * sigma_overall), (x_bar - LSL) / (3 * sigma_overall))
 
     return {
         "x_bar": x_bar,
@@ -61,6 +84,8 @@ def process_capability(
 
 
 def capability_grade(val: float) -> tuple[str, str]:
+    if np.isnan(val) or np.isinf(val):
+        return "산출 불가", "#999999"
     if val >= 1.67:
         return "매우 우수", "#2ca02c"
     elif val >= 1.33:
